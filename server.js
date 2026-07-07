@@ -1,96 +1,102 @@
 ﻿const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
-const { v4: uuid } = require("uuid");
 const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
-
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 
-// Lưu danh sách phòng
-const rooms = {};
-
 app.use(express.static(path.join(__dirname, "public")));
 
-// Tạo mã phòng
+const rooms = {};
+
+function createRoomCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+
+    for (let i = 0; i < 8; i++) {
+        if (i === 4) code += "-";
+        code += chars[Math.floor(Math.random() * chars.length)];
+    }
+
+    return code;
+}
+
 app.get("/create-room", (req, res) => {
 
     let room;
 
-    do{
-        room = uuid().split("-")[0].toUpperCase();
-    }while(rooms[room]);
+    do {
+        room = createRoomCode();
+    } while (rooms[room]);
 
     rooms[room] = [];
 
     res.json({
-        success:true,
         room
     });
 
 });
 
-io.on("connection",(socket)=>{
+io.on("connection", socket => {
 
-    console.log("Người dùng kết nối:",socket.id);
+    console.log(socket.id + " connected");
 
-    socket.on("join-room",(room,name)=>{
+    socket.on("join-room", ({ room, name }) => {
 
-        if(!rooms[room]){
-            rooms[room]=[];
+        if (!rooms[room]) {
+            rooms[room] = [];
         }
 
         rooms[room].push({
-            id:socket.id,
-            name:name
+            id: socket.id,
+            name
         });
 
         socket.join(room);
 
-        io.to(room).emit("participants",rooms[room]);
-
-        socket.to(room).emit("user-joined",{
-            id:socket.id,
-            name:name
-        });
+        io.to(room).emit("participants", rooms[room]);
 
     });
 
-    socket.on("chat-message",(room,data)=>{
+    socket.on("chat", data => {
 
-        io.to(room).emit("chat-message",data);
-
-    });
-
-    socket.on("emoji",(room,emoji)=>{
-
-        io.to(room).emit("emoji",emoji);
+        io.to(data.room).emit("chat", data);
 
     });
 
-    socket.on("disconnect",()=>{
+    socket.on("emoji", data => {
 
-        for(const room in rooms){
+        io.to(data.room).emit("emoji", data);
 
-            rooms[room]=rooms[room].filter(user=>user.id!==socket.id);
+    });
 
-            io.to(room).emit("participants",rooms[room]);
+    socket.on("disconnect", () => {
+
+        for (const room in rooms) {
+
+            rooms[room] =
+                rooms[room].filter(
+                    p => p.id !== socket.id
+                );
+
+            io.to(room).emit(
+                "participants",
+                rooms[room]
+            );
 
         }
-
-        console.log("Người dùng rời:",socket.id);
 
     });
 
 });
 
-server.listen(PORT,()=>{
+server.listen(PORT, () => {
 
-    console.log("MiniMeet chạy tại:");
-    console.log("http://localhost:"+PORT);
+    console.log("MiniMeet");
+    console.log("Running on port " + PORT);
 
 });
