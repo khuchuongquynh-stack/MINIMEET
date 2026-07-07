@@ -1,102 +1,215 @@
-﻿const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const path = require("path");
+﻿const socket = io();
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+console.log("MiniMeet script loaded");
 
-const PORT = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, "public")));
+let currentRoom = "";
 
-const rooms = {};
 
-function createRoomCode() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code = "";
+// Lấy phần tử HTML
 
-    for (let i = 0; i < 8; i++) {
-        if (i === 4) code += "-";
-        code += chars[Math.floor(Math.random() * chars.length)];
+const createBtn = document.getElementById("create");
+const codeText = document.getElementById("code");
+
+const joinBtn = document.getElementById("join");
+
+const nameInput = document.getElementById("name");
+const roomInput = document.getElementById("room");
+
+const msgInput = document.getElementById("msg");
+const sendBtn = document.getElementById("send");
+
+const chatBox = document.getElementById("chat");
+
+
+
+// =================
+// TẠO PHÒNG
+// =================
+
+createBtn.onclick = async function () {
+
+    console.log("Đang tạo phòng...");
+
+
+    try {
+
+        const response = await fetch("/create-room");
+
+
+        const data = await response.json();
+
+
+        currentRoom = data.room;
+
+
+        codeText.innerText = data.room;
+
+
+        alert(
+            "Mã phòng của bạn: " + data.room
+        );
+
+
+        console.log(
+            "Room created:",
+            data.room
+        );
+
+
+    } catch(error) {
+
+        console.error(error);
+
+        alert(
+            "Không kết nối được server!"
+        );
+
     }
 
-    return code;
-}
+};
 
-app.get("/create-room", (req, res) => {
 
-    let room;
 
-    do {
-        room = createRoomCode();
-    } while (rooms[room]);
 
-    rooms[room] = [];
+// =================
+// THAM GIA PHÒNG
+// =================
 
-    res.json({
+joinBtn.onclick = function () {
+
+
+    let room =
+    roomInput.value
+    .toUpperCase()
+    .trim();
+
+
+    let name =
+    nameInput.value.trim();
+
+
+
+    if(room === "") {
+
+        alert(
+            "Nhập mã phòng!"
+        );
+
+        return;
+
+    }
+
+
+    if(name === "") {
+
+        name = "Guest";
+
+    }
+
+
+
+    currentRoom = room;
+
+
+
+    socket.emit(
+        "join-room",
+        {
+            room: room,
+            name: name
+        }
+    );
+
+
+    console.log(
+        "Joining:",
         room
-    });
+    );
+
+
+};
+
+
+
+
+
+// =================
+// GỬI CHAT
+// =================
+
+
+sendBtn.onclick = function () {
+
+
+    let text =
+    msgInput.value.trim();
+
+
+
+    if(text === "") return;
+
+
+    socket.emit(
+        "message",
+        {
+
+            room: currentRoom,
+
+            name:
+            nameInput.value || "Guest",
+
+            text: text
+
+        }
+    );
+
+
+
+    msgInput.value = "";
+
+};
+
+
+
+
+
+// =================
+// NHẬN CHAT
+// =================
+
+
+socket.on(
+"message",
+function(data){
+
+
+    let p =
+    document.createElement("p");
+
+
+    p.innerText =
+    data.name + ": " + data.text;
+
+
+    chatBox.appendChild(p);
+
 
 });
 
-io.on("connection", socket => {
 
-    console.log(socket.id + " connected");
 
-    socket.on("join-room", ({ room, name }) => {
 
-        if (!rooms[room]) {
-            rooms[room] = [];
-        }
 
-        rooms[room].push({
-            id: socket.id,
-            name
-        });
+// =================
+// LỖI PHÒNG
+// =================
 
-        socket.join(room);
 
-        io.to(room).emit("participants", rooms[room]);
+socket.on(
+"error-room",
+function(msg){
 
-    });
-
-    socket.on("chat", data => {
-
-        io.to(data.room).emit("chat", data);
-
-    });
-
-    socket.on("emoji", data => {
-
-        io.to(data.room).emit("emoji", data);
-
-    });
-
-    socket.on("disconnect", () => {
-
-        for (const room in rooms) {
-
-            rooms[room] =
-                rooms[room].filter(
-                    p => p.id !== socket.id
-                );
-
-            io.to(room).emit(
-                "participants",
-                rooms[room]
-            );
-
-        }
-
-    });
-
-});
-
-server.listen(PORT, () => {
-
-    console.log("MiniMeet");
-    console.log("Running on port " + PORT);
+    alert(msg);
 
 });
